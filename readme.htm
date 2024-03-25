@@ -1,0 +1,303 @@
+<p>
+1.<a href="#a4x"> a4x</a> </br>
+2.<a href="#a4xan"> a4xan</a></br>
+3.<a href="#approx"> approx</a></br>
+4.<a href="#average"> average</a></br>
+5.<a href="#cont"> cont</a></br>
+6.<a href="#dev_id"> dev_id</a></br>
+7.<a href="#deviat"> deviat</a></br>
+8.<a href="#dft"> dft</a></br>
+9.<a href="#gain"> gain</a></br>
+10.<a href="#getdata"> getdata</a></br>
+11.<a href="#getsecs"> getsecs</a></br>
+12.<a href="#impulse"> impulse</a></br>
+13.<a href="#no_holes"> no_holes</a></br>
+14.<a href="#noise_l"> noise_l</a></br>
+15.<a href="#noisetest"> noisetest</a></br>
+16.<a href="#notline"> notline</a></br>
+17.<a href="#ofsfind"> ofsfind</a></br>
+18.<a href="#runreg"> runreg</a></br>
+19.<a href="#ptempl"> ptempl</a></br>
+20.<a href="#send2dev"> send2dev</a></br>
+21.<a href="#server"> server</a></br>
+22.<a href="#setgen"> setgen</a></br>
+23.<a href="#synchron"> synchron</a></br>
+24.<a href="#test-main"> test-main</a></br>
+25.<a href="#traces"> traces</a></br>
+</p>
+
+
+
+<p><strong>
+<a name="a4x"></a>
+a4x
+</strong></br>
+Скрипт теста АЧХ</br>
+Выходными данными является набор текстовых файлов с именем "afcan-номер", где "номер" означает номер канала начиная с нулевого.</br>
+Формат выходного файла: таблица</br>
+|Колебание амплитуды|Амплитуда в заданной точке|Амплитуда в заданной точке|Усиление|Частота АЦП</br>
+</p>
+<p><strong>
+<a name="ptempl"></a>
+ptempl</strong>
+Шаблон</br>
+</p>
+
+<p><strong>
+<a name="runreg"></a>
+runreg
+</strong></br>
+Скрипт запуска регистрации</br>
+Параметры: частота_АЦП усиление "полезные отсчёты{4 hex значения}" "мусор{4 hex значения}" "период трассы{4 hex значения}"</br>
+</p>
+
+<p><strong>
+<a name="test-main"></a>
+test-main
+</strong></br>
+Скрипт объединяющий 5 тестов</br>
+</p>
+
+<p><strong>
+<a name="gain"></a>
+gain
+</strong></br>
+Скрипт теста усилителя</br>
+Выходными данными является набор текстовых файлов с именем "g-номер", где "номер" означает номер канала начиная с нулевого.</br>
+Формат выходного файла: таблица</br>
+|Точка завала линейности | Усиление | Частота АЦП |</br>
+</p>
+
+<p><strong>
+<a name="getdata"></a>
+getdata
+</strong></br>
+Скрипт считывания и конвертации данных с регистратора</br>
+</p>
+
+<p><strong>
+<a name="traces"></a>
+traces
+</strong></br>
+Скрипт теста смещения трасс</br>
+</p>
+
+<p><strong>
+<a name="noisetest"></a>
+noisetest
+</strong></br>
+Скрипт теста шумов</br>
+</p>
+
+<p><strong>
+<a name="impulse"></a>
+impulse
+</strong></br>
+Скрипт теста импульсной характеристики</br>
+</p>
+
+<p><strong>
+<a name="setgen"></a>
+setgen
+</strong></br>
+Скрипт подключения резисторов или делителя напряжения у генератора</br>
+</p>
+
+<p><strong>
+<a name="synchron"></a>
+synchron
+</strong></br>
+Скрипт для синхронизации времени регистратора</br>
+</p>
+
+<p><strong>
+<a name="server"></a>
+server
+</strong></br>
+Обработка данных, полученных в результате тестов</br>
+Создание отчётного файла на основе шаблона из файла</br>
+"ptempl". В шаблоне происходит замена переменных вида</br>
+@идентификаторНомер (@n1, @t3) Номер - номер канала[0..3]</br>
+Каждое появление переменной заменяется следующим числовым</br>
+значением из соответствующего файла</br>
+Файлы с данными по тестам:</br>
+"/noise-Номер","/afcan-Номер","/impulse-Номер",</br>
+"/g-Номер","/traces-Номер"</br>
+Переменные : @n - данные теста шумов</br>
+@t - данные по тесту смещения трасс</br>
+@a - данные по тесту АЧХ</br>
+@i - данные по тесту импульсной характеристики</br>
+@g - данные теста усилителя</br>
+@id- идентификатор устройства</br>
+Параметры:  путь к директориям</br>
+</p>
+
+<p><strong>
+<a name="average"></a>
+average
+</strong></br>
+Поиск среднего значения для входного потока</br>
+Параметры:  samples gain adc_coef</br>
+samples  - количество входных отсчётов</br>
+gain     - усиление</br>
+adc_coef - единица АЦП</br>
+Вход : поток значений int</br>
+Выход : среднее_значение</br>
+</p>
+
+<p><strong>
+<a name="cont"></a>
+cont
+</strong></br>
+Поиск непрерывной последовательности валидных значений</br>
+in input stream</br>
+Параметры : [-t tags_file] samples uninterrupted</br>
+tags_file - файл тэгов</br>
+samples   - количество сэмплов</br>
+uninteruppted - количество,непрерывная последовательность</br>
+Вход : поток отсчётов</br>
+Выход : непрерывный кусок размера uninterrupted</br>
+</p>
+
+<p><strong>
+<a name="dev_id"></a>
+dev_id
+</strong></br>
+Идентификация устройства</br>
+Возвращает строку с серийным номером и</br>
+другую информацию</br>
+Параметры: [-d device] [-p portId]</br>
+device - "/dev/устройство"</br>
+portId - 1,2,4,8 (комммутация)</br>
+</p>
+
+<p><strong>
+<a name="deviat"></a>
+deviat
+</strong></br>
+Поиск разброса между максимальным и</br>
+минимальным значениями во входящем потоке</br>
+Вход : символьный массив</br>
+"число\nчисло\n..."</br>
+Выход : разброс</br>
+</p>
+
+<p><strong>
+<a name="dft"></a>
+dft_new
+dft
+</strong></br>
+Построение спектра с помощью   Fourier Tranformation</br>
+поиск максимума в спектре</br>
+Параметры : [-f file] ADC_rate samples</br>
+rate      - частота АЦП</br>
+samples   - количество сэмплов</br>
+file      - файл для записи в формате recview</br>
+Вход : поток отсчётов</br>
+Выход : непрерывный кусок размера uninterrupted</br>
+</p>
+
+<p><strong>
+<a name="getsecs"></a>
+getsecs
+</strong></br>
+Чтение секторов регистратора</br>
+Параметры : start_sector sectors_to_read</br>
+[-d device] [-p portId]</br>
+device - "/dev/устройство"</br>
+portId - 1,2,4,8 (комммутация)</br>
+</p>
+
+<p><strong>
+<a name="no_holes"></a>
+no_holes
+</strong></br>
+Удаление невалидных отсчётов</br>
+Параметры : [-t file] samples</br>
+samples - количество отсчётов</br>
+file    - файл тэгов</br>
+Вход  :  поток отсчётов</br>
+Выход : поток отсчётов</br>
+</p>
+
+<p><strong>
+<a name="noise_l"></a>
+noise_l
+</strong></br>
+Вычисление уровня шума</br>
+Параметры : adc_coef gain samples</br>
+adc_coef - единица АЦП</br>
+gain - усиление</br>
+samples - количество отсчётов</br>
+Вход  :  поток отсчётов</br>
+Выход : уровень_шума</br>
+</p>
+
+<p><strong>
+<a name="notline"></a>
+notline
+</strong></br>
+Поиск первого нелинейного значения</br>
+Параметры : begin end</br>
+begin - от данного значения</br>
+end   - до данного</br>
+Вход  :  массив символов формата</br>
+"напряжение напряжение\n..."</br>
+Выход : точка нелинейности</br>
+</p>
+
+<p><strong>
+<a name="ofsfind"></a>
+ofsfind
+</strong></br>
+Поиск импульса от начала трассы</br>
+Параметры : [-i файл-снимок] [-t тэг-файл]</br>
+длина-трассы количество-трасс</br>
+смещение ширина-импульса период-импульса</br>
+Вход  :  поток отсчётов</br>
+Выход : для каждой трассы строка вида</br>
+"смещение амплитуда\n"</br>
+</p>
+
+<p><strong>
+<a name="send2dev"></a>
+send2dev
+</strong></br>
+Отправка и чтение данных</br>
+Параметры : -d device -p portId</br>
+</p>
+
+<p><strong>
+<a name="a4xan"></a>
+a4xan
+</strong></br>
+Анализ АЧХ</br>
+Параметры : [-f file] passband adc_freq 3dB_freq</br>
+ADC_coef</br>
+passband - начало завала</br>
+adc_freq - частота АЦП</br>
+3dB_freq - точка для определения</br>
+ADC_coef - единица АЦП в милливольтах</br>
+file     - файл для записи АЧХ в формате recview</br>
+Вход  :  массив символов формата</br>
+"частота амплитуда\nчастота амплитуда\n..."</br>
+Выход : "разброс амплитуд" от начала до</br>
+частоты passband</br>
+-дБ в точке 3dB_freq of the spectrum</br>
+-дБ в точке определения</br>
+</p>
+
+<p><strong>
+<a name="approx"></a>
+approx
+</strong></br>
+Построение кусочно-линейной функции</br>
+Если разница между соседними значениями</br>
+менее параметра "width", промежуточные</br>
+значения линейно апроксимируются</br>
+Параметры : [-f file] width</br>
+file - файл для записи в формате recview</br>
+width - минимальная ширина интервалов</br>
+Выход : каждая строка "значение1 значение2\n"</br>
+Вход : каждая строка "значение1 значение2\n"</br>
+</p>

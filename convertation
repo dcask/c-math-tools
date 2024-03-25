@@ -1,0 +1,64 @@
+#!/bin/bash
+iconv -f utf8 -t koi8-r <cont_new.c >cont_new1.c
+rm cont_new.c
+mv cont_new1.c cont_new.c
+
+iconv -f utf8 -t koi8-r <offsfind.c >offsfind1.c
+rm offsfind.c
+mv offsfind1.c offsfind.c
+
+iconv -f utf8 -t koi8-r <a4xan.c >a4xan1.c
+rm a4xan.c
+mv a4xan1.c a4xan.c
+
+iconv -f utf8 -t koi8-r <deviat.c >deviat1.c
+rm deviat.c
+mv deviat1.c deviat.c
+
+iconv -f utf8 -t koi8-r <no_holes.c >no_holes1.c
+rm no_holes.c
+mv no_holes1.c no_holes.c
+
+iconv -f utf8 -t koi8-r <send2dev.c >send2dev1.c
+rm send2dev.c
+mv send2dev1.c send2dev.c
+
+iconv -f utf8 -t koi8-r <approx.c >approx1.c
+rm approx.c
+mv approx1.c approx1.c
+
+iconv -f utf8 -t koi8-r <dev_id.c >dev_id1.c
+rm dev_id.c
+mv dev_id1.c dev_id.c
+
+iconv -f utf8 -t koi8-r <noise_l.c >noise_l1.c
+rm noise_l.c
+mv noise_l1.c noise_l.c
+
+iconv -f utf8 -t koi8-r <server.c >server1.c
+rm server.c
+mv server1.c server.c
+
+iconv -f utf8 -t koi8-r <average.c >average1.c
+rm average.c
+mv average1.c average.c
+
+iconv -f utf8 -t koi8-r <dft.c >dft1.c
+rm dft.c
+mv dft1.c dft.c
+
+iconv -f utf8 -t koi8-r <getsecs.c >getsecs1.c
+rm getsecs.c
+mv getsecs1.c getsecs.c
+
+iconv -f utf8 -t koi8-r <cont.c >cont1.c
+rm cont.c
+mv cont1.c cont.c
+
+iconv -f utf8 -t koi8-r <dft_new.c >dft_new1.c
+rm dft_new.c
+mv dft_new1.c dft_new.c
+
+iconv -f utf8 -t koi8-r <notline.c >notline1.c
+rm notline.c
+mv notline1.c notline.c

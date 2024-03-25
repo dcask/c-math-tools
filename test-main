@@ -1,0 +1,53 @@
+#!/bin/bash
+dev=/dev/ttyS0
+reg=2
+gen=4
+echo Тест регистратора
+#echo определить коды регистратора и генератора
+#declare -i chn
+#declare -i qport
+#val=`dev_id -d $dev | awk '{print $3}'`
+#if [ $? -ne 0 ]; then exit 1; fi
+#if [ $val = RSC ]; then qport=4; fi
+#if [ $val = ISC ]; then qport=16; fi
+
+#for ((chn=1; chn<=qport; chn*=2)); do
+#	val=`dev_id -d $dev -p $chn | awk '{print $3}'`
+#	if [ $? -ne 0 ]; then exit 1; fi
+#	if [ $val = GEN ]; then gen=$chn; fi
+#	if [ $val = AHR ]; then reg=$chn; fi
+	
+#done
+if [ $reg = 0 ]; then echo Регистратор не найден; exit 1; fi
+if [ $gen = 0 ]; then echo Генератор не найден; exit 1; fi
+val=`dev_id -d $dev -p $reg`
+if [ $? -ne 0 ]; then echo $val; exit 1; fi
+echo Регистратор $val
+run=`echo 4 4 | send2dev -d $dev -p $reg`
+run=`echo 5 5 | send2dev -d $dev -p $reg`
+chnl=`echo $run | awk '{print $5}'`
+if [ $chnl = 0 ]; then echo 0 channels; exit 1; fi
+wdir=AHR`echo $val | awk '{print $1}'`
+#Создание каталога для конечных результатов
+results=~/$wdir
+mkdir $results
+#запись файла идентификации
+echo $val >$results/id
+#созданиек рабочего каталога для временных файлов
+mkdir /tmp/$wdir
+cd /tmp/$wdir
+#Запуск тестов
+#echo 'Тест усилителя'
+time gain $dev $results $gen $reg $chnl
+#echo 'Тест АЧХ'
+time a4x $dev $results $gen $reg $chnl
+#echo 'Тест шумов'
+time noisetest $dev $results $gen $reg $chnl
+#echo 'Тест импульса'
+time impulse $dev $results $gen $reg $chnl
+#echo 'Тест задержки трасс'
+time traces $dev $results $gen $reg $chnl
+cd ..
+rm /tmp/$wdir
+> $results/stopped
+echo Завершено

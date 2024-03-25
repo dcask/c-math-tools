@@ -1,0 +1,10 @@
+#!/bin/bash
+#синхронизация
+t=$1
+echo Синхронизация
+run=`echo "12 12 $t 0 0 0 0 0 $t" | send2dev -d $dev -p $registr`
+if [ $? -ne 0 ]; then
+	echo Ошибка синхронизации
+	#exit 1
+	continue
+fi

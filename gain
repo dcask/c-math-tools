@@ -1,0 +1,144 @@
+#!/bin/bash
+#Проводит лабораторные испытания усилителя
+
+
+#Имя файла последовательного порта.
+dev=$1
+
+#Рабочий директорий
+workdir=$2
+
+#Код генератора
+gener=$3
+
+#Код генератора
+registr=$4
+
+#Маска каналов
+channels=$5
+
+#Полезные отсчёты. .5 сек * 250 Гц
+rlen="7d 0 0 0"
+
+#Пропускаемые отсчёты. 10 сек * 250 Гц
+trash="c4 9 0 0"
+
+#Единица АЦП в миливольтах.
+adccoef=0.803057
+
+
+#Коэффициенты усиления.
+gains=(1 2,5 8,5 34 128)
+
+#Имена файлов для отсчетов каналов.
+files=('record0' 'record1' 'record2' 'record3')
+
+#Имена файлов для тэгов по каналам .
+ftags=('ftag0' 'ftag1' 'ftag2' 'ftag3')
+
+#Номера частоты, усиления и канала.
+declare -i rate gain chn u
+
+#Количество частот и усилений.
+declare -i ngains=${#gains[*]}
+
+#Запуск генератора.
+#Вызов: rungen напряжение-мВ делитель 
+rungen () {
+local e=$1
+local g=$2
+tmp=`expr 32768 + $e \* 65535 / 5000`
+echo tmp = $tmp
+hi=`printf %x $(expr $tmp / 256)`
+lo=`printf %x $(expr $tmp % 256)`
+#Вывод прямоугольного сигнала
+#(a0 f)Задержка (0 4)Единица времени ($lo $hi) Первый уровень 
+#($lo $hi) Второй уровень ($lo $hi) Третий уровень ($lo $hi) Четвёртый уровень 
+#($g) 1-й делитель ($g) 2-й делитель ($g) 3-й делитель ($g) 4-й делитель
+#(a0 f) Время 1-го уровня длительность 4000 тактов=1 сек
+#(a0 f) Время 2-го уровня длительность 4000 тактов=1 сек
+#(d0 7) Время 3-го уровня длительность 2000 тактов=,5 сек
+#(d0 7) Время 4-го уровня длительность 2000 тактов=,5 сек
+#(1) Пересинхронизация
+local run="a0 f 0 4 $lo $hi $lo $hi $lo $hi $lo $hi $g $g $g $g a0 f a0 f d0 7 d0 7 1"
+echo gen $run
+echo "3a 3a `hexsum $run` $run" | send2dev -d $dev -p $gener
+if [ $? -ne 0 ]; then
+  echo Ошибка генератора
+  exit 1
+fi
+}
+
+echo Тест усилителя
+source setgen 1		#Установка параметров генератора, запуск генератора
+#очистка файлов
+for ((chn=0; chn<4; chn++)); do
+  tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+	if [ $tmp = 0 ]; then continue; fi
+	echo "|\tPoint(mV)\t|\tGain\t|\tRate(Hz)\t|" >$$-g-$chn
+  echo "|\t_________\t|\t____\t|\t________\t|" >>$$-g-$chn
+	#>$$-g-$chn
+done
+mkdir $workdir/Gains
+echo Перебор всех коэффициентов усиления.
+for ((gain=0; gain<ngains; gain++)); do
+	step=2 # шаг до искомой точки 
+	#echo очистка файлов
+	for ((chn=0; chn<4; chn++)); do
+		tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+		if [ $tmp = 0 ]; then continue; fi
+		>$$-gain-${gains[gain]}-$chn
+	done
+	echo Перебор всех напряжений
+	for((u=2500; u>0; u-=step)); do
+		source synchron 2
+		echo  подаём генератором 4 одинаковых уровня $u mV
+		rungen $u $gain
+		source runreg 4 $gain "$rlen" "$trash" "ff ff ff ff"
+		echo ждать 20
+		sleep 20
+		echo получить данные размером .5 сек \* 250 Гц
+		source getdata 125 4
+		echo Цикл по каналам.
+		for ((chn=0; chn<4; chn++)); do
+			tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+			if [ $tmp = 0 ]; then continue; fi
+			echo удаление невалидных отсчётов из временного файла 
+			no_holes -t $$-${ftags[chn]} 125 <$$-${files[chn]}t >$$-${files[chn]}
+			if [ $? -ne 0 ]; then echo Нет валидных; exit 1; fi
+			rm $$-${files[chn]}t
+			#определить размер файла , разделить на 4  получим количество остчётов
+			fsize=`expr $(ls -l $$-${files[chn]} | awk '{print $5}') / 4`
+			echo Среднее
+			val=`average $fsize 1 $adccoef <$$-${files[chn]}`
+			if [ $? -ne 0 ]; then echo Ошибка average; exit 1; fi
+			echo "$u $val" >>$$-gain-${gains[gain]}t-$chn
+			
+		done
+		if [ $u -le 2000 ]; then step=200; fi
+	done
+	echo анализ/ Поиск нелинейности
+	for ((chn=0; chn<4; chn++)); do
+		tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+		if [ $tmp = 0 ]; then continue; fi
+		approx 1 <$$-gain-${gains[gain]}t-$chn >$$-gain-${gains[gain]}-$chn
+		if [ $? -ne 0 ]; then exit 1; fi
+		rm $$-gain-${gains[gain]}t-$chn
+		val=`notline 2000 2500 <$$-gain-${gains[gain]}-$chn`
+		if [ $? -ne 0 ]; then echo Ошибка notline; exit 1; fi
+		echo "|\t$val\t|\t${gains[gain]}\t|\t${rates[rate]}\t|" >>$$-g-$chn
+		cp $$-gain-${gains[gain]}-$chn $workdir/Gains/gain-${gains[gain]}-$chn
+		rm $$-gain-${gains[gain]}-$chn
+	done
+done
+
+# отослать на сервак 4 файла
+#удаление временных файлов
+for ((chn=0; chn<4; chn++)); do
+	tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+	if [ $tmp = 0 ]; then continue; fi
+	cp $$-g-$chn $workdir/g-$chn
+	rm $$-${files[chn]}
+	rm $$-${ftags[chn]}
+	rm $$-g-$chn
+done

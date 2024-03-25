@@ -1,0 +1,96 @@
+#!/bin/bash
+#Проводит лабораторные испытания собственных шумов АЦП регистратора.
+#параметры: устройство каталог-для-результатов код-генератора код-регистратора
+
+#Имя файла последовательного порта.
+dev=$1
+
+#Рабочий директорий
+workdir=$2
+
+#Код генератора
+gener=$3
+
+#Код генератора
+registr=$4
+
+#Маска каналов
+channels=$5
+
+#Пропускаемые отсчёты для каждой полосы. Минута от синхроимпульса (60 sek*rate)
+trash=('80 a9 3 0' 'c0 d4 1 0' '60 ea 0 0' '30 75 0 0' '98 3a 0 0')
+
+#Единица АЦП в микровольтах.
+adccoef=0.803057
+
+#Частоты дискретизации.
+rates=(4000 2000 1000 500 250)
+
+#Длина записи для каждой из частот дискретизации.
+#Должна быть равна 10 секундам.(10 * rate)
+rlens=('40 9c 0 0' '20 4e 0 0' '10 27 0 0' '88 13 0 0' 'c4 9 0 0')
+
+#Коэффициенты усиления.
+gains=(1 2,5 8,5 34 128)
+
+#Имена файлов для отсчетов каналов.
+files=('record0' 'record1' 'record2' 'record3')
+
+#Имена файлов для тэгов по каналам .
+ftags=('ftag0' 'ftag1' 'ftag2' 'ftag3')
+
+#Номера частоты, усиления и канала.
+declare -i rate gain chn fsize len
+
+#Количество частот и усилений.
+declare -i nrates=${#rates[*]} ngains=${#gains[*]}
+
+echo Тест шумов $$
+for ((chn=0; chn<4; chn++)); do
+	tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+	if [ $tmp = 0 ]; then continue; fi
+	echo "|\tNoise(mV)\t|\tGain\t|\tRate(Hz)\t|" >$$-noise-$chn
+  echo "|\t_________\t|\t____\t|\t________\t|" >>$$-noise-$chn
+	#>$$-noise-$chn
+done
+source setgen 0	#Установки генератора
+#Цикл по частотам дискретизации.
+for ((rate=0; rate<nrates; rate++)); do
+	#Перебор всех коэффициентов усиления.
+	for ((gain=0; gain<ngains; gain++)); do
+		source synchron 2
+		echo "Шум:Обработка усиления ${gains[gain]}, дискретизация ${rates[rate]} Hz"
+		source runreg $rate $gain "${rlens[rate]}" "${trash[rate]}" "ff ff ff ff"
+		echo Задержка 80 сек
+		sleep 80
+		echo получить 10 секунд отсчётов
+		len=${rates[rate]}0
+		source getdata $len $rate
+		echo Цикл по каналам.
+		for ((chn=0; chn<4; chn++)); do
+			tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+			if [ $tmp = 0 ]; then continue; fi
+			#echo удаление невалидных отсчётов из временного файла
+			#echo Запись результата в файл канала
+			no_holes -t $$-${ftags[chn]} $len <$$-${files[chn]}t >$$-${files[chn]}
+			#echo определить размер файла , разделить на 4  получим количество остчётов
+			fsize=`expr $(ls -l $$-${files[chn]} | awk '{print $5}') / 4`
+			#echo вычисление шума
+			val=`noise_l $adccoef ${gains[gain]} $fsize <$$-${files[chn]}`
+			echo "|\t$val\t|\t${gains[gain]}\t|\t${rates[rate]}\t|" >>$$-noise-$chn
+			rm $$-${files[chn]}t
+		done
+	done
+done
+
+#отослать 4 файла на сервер (noise-$chn)
+echo удаление временных файлов
+for ((chn=0; chn<4; chn++)); do
+	tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+	if [ $tmp = 0 ]; then continue; fi
+	cp $$-noise-$chn $workdir/noise-$chn
+	rm $$-${files[chn]}
+	rm $$-${ftags[chn]}
+	rm $$-noise-$chn
+done
+echo Тест шумов завершен

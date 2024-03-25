@@ -1,0 +1,123 @@
+#!/bin/bash
+#Проводит лабораторные испытания смещения трасс регистратора.
+
+#количество трасс
+trcount=5
+
+#Имя файла последовательного порта.
+dev=$1
+
+#Рабочий директорий
+workdir=$2
+
+#Код генератора
+gener=$3
+
+#Код генератора
+registr=$4
+
+#Маска каналов
+channels=$5
+
+#Единица АЦП в миливольтах.
+adccoef=0.803057
+
+#Частоты дискретизации.
+rates=(4000 2000 1000 500 250)
+
+#Количество пропускаемых отсчётов для каждой полосы 1.5 сек
+trash=('70 17 0 0' 'b8 b 0 0' 'dc 5 0 0' 'ee 2 0 0' '77 1 0 0')
+
+#Полезные отсчёты для каждой полосы.
+#Должна быть равна 5 периодам импульсов(10 сек) - 1 сек-1 отсчёт.
+rlens=('9f 8c 0 0' '4f 46 0 0' '27 23 0 0' '93 11 0 0' 'c9 8 0 0')
+
+#период трассы для каждой полосы. 12 сек
+period="c 0 0 0"
+
+#Имена файлов для отсчетов каналов.
+files=('record0' 'record1' 'record2' 'record3')
+
+#Имена файлов для тэгов по каналам .
+ftags=('ftag0' 'ftag1' 'ftag2' 'ftag3')
+
+#Номера частоты, усиления и канала.
+declare -i rate gain chn
+
+#Количество частот и усилений.
+declare -i nrates=${#rates[*]} ngains=${#gains[*]}
+
+#Запуск генератора.
+#Вызов: rungen rate
+rungen () {
+local r=$1
+#Вывод прямоугольного сигнала
+local fr1=(1 2 4 8 10)
+local fr2=('cf' 'ce' 'cc' 'c8' 'c0')
+#(a0 f)Задержка (0 4)Единица времени (0 80) Первый уровень 
+#(ff ff) Второй уровень (0 80) Третий уровень (0 80) Четвёртый уровень 
+#(0) 1-й делитель (0) 2-й делитель (0) 3-й делитель (0) 4-й делитель
+#(a0 f) Время 1-го уровня длительность 4000 тактов
+#($fr1[r] 0) Время 2-го уровня длительность 1/fd сек
+#(d0 7) Время 3-го уровня длительность 2000 тактов
+#($fr2[r] 7) Время 4-го уровня длительность 2000-1/fd сек тактов
+#(1) Пересинхронизация
+local run="a0 f 0 4 0 80 ff ff 0 90 0 a0 0 0 0 0 a0 f ${fr1[r]} 0 d0 7 ${fr2[r]} 7 1"
+echo "3a 3a `hexsum $run` $run" | send2dev -d $dev  -p $gener  
+if [ $? -ne 0 ]; then
+  echo Ошибка генератора
+echo $run
+  exit 1
+fi
+}
+
+echo Тест смещения трасс
+source setgen 1			#Установка параметров генератора, запуск генератора
+#подготовка файлов
+for ((chn=0; chn<4; chn++)); do
+	tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+	if [ $tmp = 0 ]; then continue; fi
+	echo "|\tShift(samples)\t|\tGain\t|\tRate(Hz)\t|" >$$-afcan-$chn
+  echo "|\t______________\t|\t____\t|\t________\t|" >>$$-afcan-$chn
+	>$$-traces-$chn
+done
+#Перебор всех коэффициентов усиления.
+#Цикл по частотам дискретизации.
+for ((rate=4; rate<nrates; rate++)); do
+	#период импульсов в отсчётах 1 сек + 0.5 сек + 0.5 сек
+	echo Обработка частоты ${rates[rate]}
+	implen=`expr ${rates[rate]} \* 2`
+	source synchron 2
+	rungen $rate
+	source runreg $rate 0 "${rlens[rate]}" "${trash[rate]}" "$period"
+	echo ждать 5 длин импульсов с запасом \* кол-во трасс= 75
+	sleep 75
+	#получить данные размером 5 длин импульсов - 1 сек
+	trlen=`expr $implen \* 5 - ${rates[rate]}`
+	source getdata `expr $trlen \* $trcount` $rate
+	echo `expr $trlen \* $trcount` $rate
+	#Цикл по каналам.
+	width=100
+	shift=`expr ${rates[rate]} / 2 - $width`
+	for ((chn=0; chn<4; chn++)); do
+		tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+		if [ $tmp = 0 ]; then continue; fi
+		val=`ofsfind -t $$-${ftags[chn]} $trlen $trcount $shift $width $implen \
+					<$$-${files[chn]}t | deviat`
+		if [ $? -ne 0 ]; then exit 1; fi
+		echo "|\t$val\t|\t128\t|\t${rates[rate]}\t|" >>$$-traces-$chn
+		rm $$-${files[chn]}t
+		
+	done
+done
+
+# отослать на сервак 4 файла
+#удаление временных файлов
+for ((chn=0; chn<4; chn++)); do
+	tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+	if [ $tmp = 0 ]; then continue; fi
+	cp $$-traces-$chn $workdir/traces-$chn
+	#rm $$-${files[chn]}
+	rm $$-${ftags[chn]}
+	rm $$-traces-$chn
+done

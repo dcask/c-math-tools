@@ -1,0 +1,30 @@
+#!/bin/bash
+gcc -Wall -o a4xan a4xan.c -lm
+rm a4xan.c
+gcc -Wall -o approx approx.c
+rm approx.c
+gcc -Wall -o average average.c
+rm average.c
+gcc -Wall -o cont cont.c 
+rm cont.c
+gcc -Wall -o deviat deviat.c
+rm deviat.c
+gcc -Wall -o dev_id dev_id.c
+rm dev_id.c
+gcc -Wall -o dft dft.c -lm
+rm dft.c
+gcc -Wall -o getsecs getsecs.c
+rm getsecs.c
+gcc -Wall -o no_holes no_holes.c
+rm no_holes.c
+gcc -Wall -o noise_l noise_l.c -lm
+rm noise_l.c
+gcc -Wall -o notline notline.c
+rm notline.c
+gcc -Wall -o offsfind offsfind.c
+rm offsfind.c
+gcc -Wall -o send2dev send2dev.c
+rm send2dev.c
+gcc -Wall -o test-server server.c
+rm server.c
+

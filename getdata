@@ -1,0 +1,75 @@
+#!/bin/bash
+#Скачивание, переформатирование и подготовка данных.
+#Вызов: getdata длина-записи.
+len=$1
+r=$2 # rate number
+#Размер одного сектора в канальных отсчетах.
+sectsize=169
+if [ $r -ne 0 ]; then c=comp; else c=""; fi # если полоса до 1600, без сжатия
+#Вычисление количества секторов с данными.
+#Вызов: nsect длина-записи.
+nsect () {
+local -i n=$1 sect
+((n *= 4))
+((sect = n / sectsize))
+((sect += n % sectsize != 0))
+echo $sect
+}
+
+#Количество секторов для чтения
+#sect=`nsect $len`
+
+echo Остановить регистрацию
+run=`echo 4 4 | send2dev -d $dev -p $registr`
+if [ $? -ne 0 ]; then
+  echo Ошибка при остановке регистрации
+  #exit 1
+  continue
+fi
+echo Определить последний считанный сектор
+run=`echo c c | send2dev -d $dev -p $registr`
+
+if [ $? -ne 0 ]; then
+  echo Ошибка накопителя
+  #exit 1
+  continue
+fi
+#echo Данные накопителя: $run
+sect=`echo $run | awk '{print $9+$10*256+$11*65535+$12*65535*65535-1}'`
+echo Sectors: last-$sect lenght-`nsect $len`
+#echo Состояние накопителя
+#echo "c c" | send2dev -d $dev -p $registr
+echo Считать данные
+run=`getsecs 1 $sect -d $dev -p $registr >$$-record`
+if [ $? -ne 0 ]; then
+	echo Невозможно считать данные
+	#exit 1
+        continue
+fi
+
+echo Конвертация $c
+
+declare -i ch
+for ((ch=0; ch<4; ch++)); do
+tmp=`echo $(printf %d 0x$channels) $ch | awk '{print rshift(and($1,2^$2),$2)}'`
+if [ $tmp = 1 ]; then param=`echo $param out$ch=$$-${files[$ch]}t tag$ch=$$-${ftags[$ch]} `; fi
+done
+
+#run=`cvtsamp out0=$$-${files[0]}t out1=$$-${files[1]}t \
+#		out2=$$-${files[2]}t out3=$$-${files[3]}t \
+#		tag0=$$-${ftags[0]} tag1=$$-${ftags[1]} \
+#		tag2=$$-${ftags[2]} tag3=$$-${ftags[3]} \
+#		reclen=$len $c\
+#		<$$-record`
+run=`cvtsamp $param reclen=$len $c <$$-record`
+if [ $? -ne 0 ]; then
+	echo Ошибка конвертирования отсчётов
+	#exit 1
+        continue
+fi
+
+#if [ $nn -ne 0 ]; then
+#cp $$-record $nn-record
+#fi
+#rm $$-record
+

@@ -1,0 +1,130 @@
+#!/bin/bash
+#Проводит лабораторные испытания АЧХ АЦП регистратора.
+#Время импульса после посыла синхроимпульса= 2 сек задержка регистрации + 1 сек мусора
+#Период импульса 2 сек
+
+#Имя файла последовательного порта.
+dev=$1
+
+#Рабочий директорий
+workdir=$2
+
+#Код генератора
+gener=$3
+
+#Код генератора
+registr=$4
+
+#Маска каналов
+channels=$5
+
+#Единица АЦП в миливольтах.
+adccoef=0.803057
+
+#Частоты дискретизации.
+rates=(4000 2000 1000 500 250)
+
+#Количество пропускаемых отсчётов для каждой полосы 1.5 сек
+trash=('70 17 0 0' 'b8 b 0 0' 'dc 5 0 0' 'ee 2 0 0' '77 1 0 0')
+
+#Полезных отсчётов для каждой полосы.
+#Должна быть равна 5 периодам импульсов - 1 сек = 9 сек
+rlens=('a0 8c 0 0' '50 46 0 0' '28 23 0 0' '94 11 0 0' 'ca 8 0 0')
+
+
+#Коэффициенты усиления.
+gains=(1 2,5 8,5 34 128)
+
+#Имена файлов для отсчетов каналов.
+files=('record0' 'record1' 'record2' 'record3')
+
+#Имена файлов для тэгов по каналам .
+ftags=('ftag0' 'ftag1' 'ftag2' 'ftag3')
+
+#Номера частоты, усиления и канала.
+declare -i rate gain chn
+
+#Количество частот и усилений.
+declare -i nrates=${#rates[*]} ngains=${#gains[*]}
+
+#Запуск генератора.
+#Вызов: rungen rate gain
+rungen () {
+local r=$1
+local g=$2
+#Вывод прямоугольного сигнала
+local fr=(1 2 4 8 10) # 1/fd
+local mod=('cf 7' 'ce 7' 'cc 7' 'c8 7' 'c0 7')
+#(a0 f)Задержка (0 4)Единица времени (0 80) Первый уровень 
+#(ff ff) Второй уровень (0 80) Третий уровень (0 80) Четвёртый уровень 
+#($g) 1-й делитель ($g) 2-й делитель ($g) 3-й делитель ($g) 4-й делитель
+#(a0 f) Время 1-го уровня длительность 4000 тактов
+#($fr[r] 0) Время 2-го уровня длительность 1/fd сек
+#(d0 7) Время 3-го уровня длительность 2000 тактов
+#($mod) Время 4-го уровня длительность 2000-1/fd тактов
+#(1) Пересинхронизация
+local run="a0 f 0 4 0 70 ff ff 0 90 0 a0 $g $g $g $g a0 f ${fr[r]} 0 d0 7 ${mod[r]} 1"
+echo "3a 3a `hexsum $run` $run" | send2dev -d $dev -p $gener 
+if [ $? -ne 0 ]; then
+  echo Ошибка генератора
+  exit 1
+fi
+}
+echo Тест импульса
+source setgen 1
+for ((chn=0; chn<4; chn++)); do
+  tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+	if [ $tmp = 0 ]; then continue; fi
+  echo "|\tShift(samples)\t|\tGain\t|\tRate(Hz)\t|" >$$-impulse-$chn
+  echo "|\t______________\t|\t____\t|\t________\t|" >>$$-impulse-$chn
+	#>$$-impulse-$chn
+done 
+echo Перебор всех коэффициентов усиления.
+for ((gain=0; gain<ngains; gain++)); do
+	#Цикл по частотам дискретизации.
+	for ((rate=0; rate<nrates; rate++)); do
+		echo gain=${gains[gain]} rate=${rates[rate]}
+		#период импульсов в отсчётах 2 сек
+		implen=`expr $(expr 2 \* ${rates[rate]})`
+		source synchron 2
+		echo Запустить генератор
+		rungen $rate $gain
+		source runreg $rate $gain "${rlens[rate]}" "${trash[rate]}" "ff ff ff ff"
+		#echo $rate $gain "${rlens[rate]}" "${trash[rate]}" "ff ff ff ff"
+		echo ждать 30 
+		sleep 30
+		#получить данные размером 5 длин импульсов - 1 сек
+		trlen=`expr $implen \* 5 - ${rates[rate]}`
+		#echo implen=$implen trlen=$trlen
+		source getdata $trlen $rate
+		#Цикл по каналам.
+		width=100
+		shift=`expr ${rates[rate]} / 2 - $width`
+		for ((chn=0; chn<4; chn++)); do
+		  tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+		  if [ $tmp = 0 ]; then continue; fi
+			val=`ofsfind -i $$-imp-${rates[rate]}-${gains[gain]}-$chn -t $$-${ftags[chn]} $trlen 1 $shift $width $implen < $$-${files[chn]}t`
+			if [ $? -ne 0 ]; then echo Ошибка offsfind; exit 1; fi
+			#переводим в милливольты
+			v=`echo "$(echo $val | awk '{print $2}') $adccoef" |awk '{print $1*$2/1000}'`
+			#v=`echo $val | awk '{print $2}'`
+			#echo "`echo $val | awk '{print $1}'` $v : gain=${gains[gain]} rate=${rates[rate]}"  >>$$-impulse-$chn
+			echo "|\t`echo $val | awk '{print $1}'`\t|\t${gains[gain]}\t|\t${rates[rate]}\t|"  >>$$-impulse-$chn
+			#rm $$-${files[chn]}t
+			#на сервер снимок импульса
+			cp $$-imp-${rates[rate]}-${gains[gain]}-$chn $workdir/imp-${rates[rate]}-${gains[gain]}-$chn
+			rm $$-imp-${rates[rate]}-${gains[gain]}-$chn
+		done
+	done
+done
+
+# отослать на сервак 4 файла
+#удаление временных файлов
+for ((chn=0; chn<4; chn++)); do
+  tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+	if [ $tmp = 0 ]; then continue; fi
+	cp $$-impulse-$chn $workdir/impulse-$chn
+	#rm $$-${files[chn]}t
+	rm $$-${ftags[chn]}
+	rm $$-impulse-$chn
+done

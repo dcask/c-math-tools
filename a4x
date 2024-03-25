@@ -1,0 +1,151 @@
+#!/bin/bash
+#Проводит лабораторные испытания АЧХ
+#параметры: устройство каталог-для-результатов код-генератора код-регистратора
+
+#Имя файла последовательного порта.
+dev=$1
+
+#Рабочий директорий
+workdir=$2
+
+#Код генератора
+gener=$3
+
+#Код генератора
+registr=$4
+
+#Маска каналов
+channels=$5
+
+#Предельные точки линейности
+lpoints=(1500 750 375 187 93)
+
+#Единица АЦП в mkвольтах.
+adccoef=0.803057
+
+#Пропускаемые отсчёты для каждой полосы. (2 sek*rate)
+trash=('40 1f 0 0' 'a0 f 0 0' 'd0 7 0 0' 'e8 3 0 0' 'f4 1 0 0')
+#trash=('40 1f 0 0' 'a0 f 0 0' 'd0 7 0 0' '1 0 0 0' '1 0 0 0') # temp
+#Длина записи (полезные отсчёты) для каждой полосы.
+#Должна быть равна 20 сек.
+#rlens=('80 38 1 0' '40 9c 0 0' '20 4e 0 0' '10 27 0 0' '88 13 0 0')
+#Длина записи (полезные отсчёты) для каждой полосы.
+#Должна быть равна 2 сек.
+#rlens=('40 1f 0 0' 'a0 f 0 0' 'd0 7 0 0' 'e8 3 0 0' 'f4 1 0 0')
+#Должна быть равна 3 сек.
+#rlens=('e0 2e 0 0' '70 17 0 0' 'b8 b 0 0' 'dc 5 0 0' 'ee 2 0 0')
+#Должна быть равна 1 сек.
+rlens=('a0 f 0 0' 'd0 7 0 0' 'e8 3 0 0' 'f4 1 0 0' 'fa 0 0 0')
+#Точки 3дБ
+p3dB=(1634 816 408 204 100)
+
+#Коэффициенты усиления.
+gains=(1 2,5 8,5 34 128)
+
+#Частоты дискретизации.
+rates=(4000 2000 1000 500 250)
+
+#Имена файлов для отсчетов каналов.
+files=('record0' 'record1' 'record2' 'record3')
+
+#Имена файлов для тэгов по каналам .
+ftags=('ftag0' 'ftag1' 'ftag2' 'ftag3')
+
+#Номера частоты, усиления и канала.
+declare -i rate gain chn freq step
+
+#Количество частот и усилений.
+declare -i ngains=${#gains[*]} nrates=${#rates[*]}
+
+#Запуск генератора.
+#Вызов: rungen частота делитель
+rungen () {
+local fr=$1 
+local g=$2
+#Вывод синусоидального сигнала
+hi=`printf %x $(expr $fr / 256)`
+lo=`printf %x $(expr $fr % 256)`
+#(a0 f) задержка ($lo $hi) частота ($g) делитель
+local run="a0 f $lo $hi $g"
+echo "39 39 `hexsum $run` $run" | send2dev -d $dev -p $gener
+if [ $? -ne 0 ]; then
+  echo Ошибка генератора
+  exit 1
+fi
+}
+
+echo Тест АЧХ
+echo подготовка файлов
+for ((chn=0; chn<4; chn++)); do
+  tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+	if [ $tmp = 0 ]; then continue; fi
+  echo "|\tDeviation(mV)\t|\tAmplitude(mV)\t|\tAmplitude(mV)\t|\tGain\t|\tRate(Hz)\t|" >$$-afcan-$chn
+  echo "|\t_________________________________________________\t|\t____\t|\t________\t|" >>$$-afcan-$chn
+	#>$$-afcan-$chn
+done
+mkdir $workdir/AFC
+echo Перебор всех коэффициентов усиления.
+source setgen 1			#Установка параметров генератора
+for ((gain=0; gain<ngains; gain++)); do
+  
+  for ((rate=1; rate<nrates; rate++)); do
+  	#echo "rate=${rates[rate]} gain=${gains[gain]}"
+    	#очищаем файлы
+	for ((chn=0; chn<4; chn++)); do
+    tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+    if [ $tmp = 0 ]; then continue; fi
+		>$$-a4x-${gains[gain]}-${rates[rate]}-$chn
+	done
+	step=`expr ${rates[rate]} / 250`
+	for((freq=step; freq <rates[rate]/2+1; freq+=step)); do
+		echo "АЧХ:Обработка усиления ${gains[gain]}, дискретизация ${rates[rate]} Hz, $freq Hz"
+		source synchron 0
+		echo Запустить генератор $freq Hz gain:${gains[gain]}
+		rungen $freq $gain
+		echo Запустить регистратор
+		source runreg $rate $gain "${rlens[rate]}" "${trash[rate]}" "ff ff ff ff"
+		echo Ждать 20
+		sleep 20
+		echo Получить данные с регистратора 3 sek
+		time source getdata `expr ${rates[rate]} \* 1` $rate
+		for ((chn=0; chn<4; chn++)); do
+			tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+			if [ $tmp = 0 ]; then continue; fi
+			#echo ищем непрерывный кусок в 10 секунд
+			cont -t $$-${ftags[chn]} `expr ${rates[rate]} \* 1` ${rates[rate]} \
+					<$$-${files[chn]}t >$$-${files[chn]}
+			if [ $? -ne 0 ]; then echo "cont error" >>$$-afc-${gains[gain]}-${rates[rate]}-$chn; continue; fi
+			rm $$-${files[chn]}t
+			#определяем количество отсчётов
+			fsize=`expr $(ls -l $$-${files[chn]} | awk '{print $5}') / 4`
+			#fsize должна быть равна ${rates[rate]}
+			#echo выделяем основную частоту и её амплитуду
+			val=`dft ${rates[rate]} $fsize <$$-${files[chn]}`
+			echo "$val" >>$$-afc-${gains[gain]}-${rates[rate]}-$chn
+		done
+  	done
+  	#анализ
+  	#отсылаем на сервер
+	for ((chn=0; chn<4; chn++)); do
+    tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+    if [ $tmp = 0 ]; then continue; fi
+		val=`a4xan -f $workdir/AFC/afcr-${gains[gain]}-${rates[rate]}-$chn ${lpoints[rate]} ${rates[rate]} ${p3dB[rate]} $adccoef <$$-afc-${gains[gain]}-${rates[rate]}-$chn`
+		echo "|\t$val\t|\t${gains[gain]}\t|\t${rates[rate]}\t|" >>$$-afcan-$chn
+		cp $$-afc-${gains[gain]}-${rates[rate]}-$chn $workdir/AFC/afc-${gains[gain]}-${rates[rate]}-$chn
+		rm $$-afc-${gains[gain]}-${rates[rate]}-$chn
+	done
+  done
+break
+done
+
+# отослать на сервак 4 файла
+#удаление временных файлов
+for ((chn=0; chn<4; chn++)); do
+  tmp=`echo $(printf %d 0x$channels) $chn | awk '{print rshift(and($1,2^$2),$2)}'`
+	if [ $tmp = 0 ]; then continue; fi
+	cp $$-afcan-$chn $workdir/afcan-$chn
+	rm $$-${files[chn]}
+	rm $$-${ftags[chn]}
+	rm $$-ax4an-$chn
+done
+echo Test complete !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
